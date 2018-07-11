@@ -1,0 +1,8 @@
+---
+- hosts: others
+  tasks:
+    - shell: cat /etc/motd
+      register: motd_contents
+    - debug: msg="Message={{ motd_contents.stdout }}"
+    - debug: msg="MOTD is EMPTY"
+      when: motd_contents.stdout == ''

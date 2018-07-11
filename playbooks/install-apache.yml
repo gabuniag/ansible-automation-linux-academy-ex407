@@ -1,0 +1,22 @@
+---
+- hosts: databases
+  become: yes
+  tasks:
+   - name: install apache
+     yum: 
+       name: httpd
+       state: latest
+   - name: create file if does not exist
+     file: 
+       state: touch
+       path: /var/www/html/index.html
+   - name: If line is not there, add it
+     lineinfile: 
+       state: present
+       dest: /var/www/html/index.html
+       line: Hostname={{ansible_hostname }}
+   - name: start apache
+     service:
+       name: httpd
+       state: reloaded
+       enabled: yes

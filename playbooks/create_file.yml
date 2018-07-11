@@ -1,0 +1,10 @@
+---
+- hosts: databases
+  vars:
+    create_file: true
+  tasks:
+    - name: create file
+      file:
+       state: touch
+       path: /home/ansible/variable_was_true
+      when: not create_file

@@ -1,0 +1,6 @@
+[databases]
+server2  # ansible_user=giorgi
+
+[other]
+server3
+192.168.4.213 # server2

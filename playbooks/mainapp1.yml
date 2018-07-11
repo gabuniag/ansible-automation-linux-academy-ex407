@@ -1,0 +1,18 @@
+---
+- hosts: databases
+  tasks:
+   - name: upload a file to the target
+     copy: 
+       src: /opt/program1.sh
+       dest: /home/ansible/program1.sh
+       mode: 0755 # remember to put 0 in front of standard permissions
+   - name: if line not there, add it
+     lineinfile:
+       state: present
+       dest: /home/ansible/program1.sh
+       regexp: '^HOSTNAME='
+       line: HOSTNAME={{ ansible_hostname }}
+   - name: Run the program
+     shell: /home/ansible/program1.sh
+     register: program1_out
+   - debug: msg="output={{program1_out}}"

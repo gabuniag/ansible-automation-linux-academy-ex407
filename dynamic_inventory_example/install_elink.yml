@@ -1,0 +1,8 @@
+---
+- hosts: all
+  user: ansible
+  sudo: yes
+  gather_facts: no
+  tasks:
+    - name: install elinks
+      action: yum name=elinks state=latest

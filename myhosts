@@ -1,0 +1,2 @@
+[hosts]
+server2 folder=/home/ansible

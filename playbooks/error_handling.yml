@@ -1,0 +1,13 @@
+---
+- hosts: databases
+  tasks:
+    - name: copy from server
+      copy: src=test.sh dest=/home/ansible/test.sh mode=0755
+    - name: Run the script
+      command: /home/ansible/test.sh
+      register: comm_out
+      ignore_errors: yes
+    - debug:
+       msg="out is {{comm_out.stdout}}"
+    - debug:
+       msg="err is {{comm_out.stderr}}"

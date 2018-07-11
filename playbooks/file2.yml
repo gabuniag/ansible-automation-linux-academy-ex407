@@ -1,0 +1,8 @@
+---
+- hosts: databases
+  tasks:
+   - debug:
+       msg: "{{ item }}"
+     with_file:
+       - first_file.txt
+       - second_file.txt

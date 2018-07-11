@@ -1,0 +1,10 @@
+---
+- hosts: databases
+  tasks:
+  - name: with_items
+    debug:
+     msg: "{{ item }}"
+    with_items: 
+     - 1 traki
+     - 2 traki
+

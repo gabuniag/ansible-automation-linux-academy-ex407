@@ -1,0 +1,10 @@
+---
+- hosts: databases
+  tasks: 
+   - name: print stdout
+     command: echo "hello world"
+     register: hello # register gets output and puts into a variable "hello"
+   - debug: msg="out={{ hello.stdout }}"
+   - debug: msg="err={{ hello.stderr }}"
+   - debug: 
+       msg: "system {{ inventory_hostname }} has default gateway {{ ansible_default_ipv4.gateway }}"

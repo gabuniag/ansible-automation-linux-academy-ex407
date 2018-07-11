@@ -1,0 +1,13 @@
+---
+- hosts: databases
+  tasks:
+   - name: create file if does not exist
+     file:
+       state: touch
+       path: /home/ansible/hostname.conf
+   - name: If line is not there, add it
+     lineinfile:
+       state: present
+       dest: /home/ansible/hostname.conf
+       line: Hostname={{ ansible_hostname }}
+
