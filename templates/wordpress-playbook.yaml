@@ -1,0 +1,28 @@
+---
+- hosts: databases
+  become: yes  
+  vars:
+    database_name_here: wordpress
+    username_here: wordpress
+    password_here: ZzZ7&7as
+    dbhost_here: 192.168.4.213
+  tasks:
+  - name: install php for wordpress
+    yum: name={{item}}
+    with_items: 
+      - php
+      - php-gd
+      - php-pear
+      - php-mysql
+  - name:
+    service: name=httpd state=restarted
+  - unarchive:
+      src: https://wordpress.org/latest.tar.gz
+      dest: /tmp/
+      remote_src: True 
+  - name: remove tmp
+    command: /usr/bin/rm -rf /var/www/html
+  - name: move wordpress 
+    command: /usr/bin/mv /tmp/wordpress /var/www/html
+  - name: copy template to host
+    template: src=wp-config.j2 dest=/var/www/html/wp-config.php

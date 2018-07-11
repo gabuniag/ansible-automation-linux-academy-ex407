@@ -1,0 +1,11 @@
+---
+# This playbook will put profile.txt in destination hosts's home dir.
+# Playbook uses local file profile.j2 and replaces variables in it.
+- hosts: databases
+  vars: 
+    name: Giorgi Gabunia
+    email: giorgi@example.com
+    bday: 28.04.1987
+  tasks:
+  - name: create profile file
+    template:  src=profile.j2 dest=~/profile.txt

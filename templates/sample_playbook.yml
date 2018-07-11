@@ -1,0 +1,16 @@
+---
+- hosts: databases
+  become: yes
+  vars:
+    description: "{{ansible_hostname}}"
+  tasks:
+  - name: write the index file
+    template: src=sample_template.j2 dest=/var/www/html/index.html
+    notify:
+    - restart httpd
+  - name: ensure apache is running
+    service: name=httpd state=started
+  handlers:
+    - name: restart httpd
+      service: name=httpd state=restarted
+      
