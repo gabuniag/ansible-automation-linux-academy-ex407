@@ -1,0 +1,9 @@
+- name: create file if it does not exist
+  file: state=touch path=/var/www/html/index.html
+
+- name: if hostname not in the file, add to it
+  lineinfile:
+    state: present
+    dest: /var/www/html/index.html
+    line: Hostname={{ ansible_hostname }}
+

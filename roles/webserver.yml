@@ -1,0 +1,6 @@
+--- # master playbook to install apache
+
+- hosts: single
+  become: yes
+  roles:
+    - apache-webserver # indicates that roles are in directory apache-webserver

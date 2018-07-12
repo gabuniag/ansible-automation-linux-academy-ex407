@@ -1,0 +1,8 @@
+- name: install php on server
+  yum: name={{item}} state=latest
+  with_items:
+   - php
+   - php-gd
+   - php-pear
+   - php-mysql
+

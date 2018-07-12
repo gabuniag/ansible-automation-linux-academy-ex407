@@ -1,0 +1,4 @@
+--- 
+- hosts: single
+  tasks: 
+  - include: tasks/main.yml 

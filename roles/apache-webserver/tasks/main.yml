@@ -1,0 +1,4 @@
+---
+- name: install apache
+  yum: pkg=httpd state=latest
+  notify: Restart HTTPD # handler for this notify will be in handlers dir 
