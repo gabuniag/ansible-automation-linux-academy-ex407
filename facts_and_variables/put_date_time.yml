@@ -1,0 +1,7 @@
+---
+- hosts: single
+  vars:
+    date_time: "{{ ansible_date_time.date }} {{ ansible_date_time.hour}}:{{ ansible_date_time.minute }}"
+  tasks:
+  - name: write date and time on server's file
+    template: src=date_template.j2 dest=/home/ansible/date-time.txt

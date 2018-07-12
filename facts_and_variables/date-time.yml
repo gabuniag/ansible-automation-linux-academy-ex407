@@ -1,0 +1,5 @@
+---
+- hosts: single
+  tasks: 
+    - debug:
+        msg: "the server date is: {{ansible_date_time.date}} Time {{ansible_date_time. hour}}:{{ ansible_date_time.minute }}"
