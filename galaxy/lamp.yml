@@ -1,0 +1,6 @@
+---
+- hosts: single
+  become: yes
+  roles:
+    - geerlingguy_apache/geerlingguy.apache
+    - geerlingguy_mysql/geerlingguy.mysql
