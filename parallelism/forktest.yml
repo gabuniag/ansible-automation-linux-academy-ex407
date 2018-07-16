@@ -1,0 +1,6 @@
+---
+- hosts: centos
+  become: yes
+  - name: install elings
+    yum: name=elinks state=latest
+    

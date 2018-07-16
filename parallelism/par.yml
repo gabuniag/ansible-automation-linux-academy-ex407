@@ -1,0 +1,8 @@
+---
+- hosts: centos
+  become: yes
+  max_fail_percentage: 30
+  serial: 10
+  tasks: 
+  - name: install elinks
+    yum: name=elinks state=latest
