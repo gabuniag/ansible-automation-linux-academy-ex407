@@ -1,0 +1,5 @@
+---
+# tasks file for ./test.demo
+- copy: content="{{special_password}}" dest=/home/ansible/encrypted_output
+- shell: echo "{{special_password}}" > testfile
+  no_log: true

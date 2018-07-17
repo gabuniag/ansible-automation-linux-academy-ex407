@@ -1,0 +1,4 @@
+---
+- hosts: single
+  roles:
+    - roles/test.demo
