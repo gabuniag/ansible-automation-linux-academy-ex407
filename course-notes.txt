@@ -1,0 +1,1019 @@
+## Preparing Lab env
+ - install 3 centos7 machines. server1-3. On server1:
+$ sudo yum install epel-release    
+$ sudo yum install ansble
+$ vim /etc/ansible/hosts
+    [local]
+    localhost
+
+    [centos]
+    server1
+    server2
+    server3
+
+    [databases]
+    server2
+$ ansible centos --list-hosts # see configured groups
+$ useradd ansble # on all lab servers
+$ echo ansible | passwd ansible --stdin
+$ sudo visudo 
+    ansible ALL=(ALL) NOPASSWD:ALL # on all hosts. sudo commands should execute with no password
+$ ansible all -m ping
+$ ssh-keygen # generate key on server1
+$ ssh-copy-id server1
+$ ssh-copy-id server2
+$ ssh-copy-id server3
+$ ssh-copy-id root@server1
+$ ssh-copy-id root@server2
+$ ssh-copy-id root@server3
+$ ansible all -m ping # all will execute on all nodes defined in ansible hosts. -m stand for module. ping is a module. more on this later.
+
+## Ansible summary
+ - Inventories:
+   - static files similar structure as ansible hosts
+   - can be called from any file with -i option
+   - can be dynamic, can be provided by a program or script.
+ - Modules:
+   - Modules are tools for ansible
+   - some modules come with ansible, others can be added
+   - for example yum is a module for ansible, you can see modules on https://docs.ansible.com/ansible/latest/modules/modules_by_category.html
+   - modules can be used directly or called from playbook
+ - Variables:
+   - Allows to customize sysrem
+   - var name should start with letter
+   - variables can be defined in playbook or inventory
+   - can be defined with ninja2 templating system
+ - facts:
+   - a way to get data from systems
+   - can use facts in playbook variables
+   - fact gatherig can be disabled in playbooks
+      - gather_facts: no
+   - can speed up execution
+ - playbooks:
+   - instructions for ansible execution
+   - made of individual plays
+   - in YAML format
+ - Configuration files:
+   - /etc/ansible/ansible.cfg
+   - configuration is read on execution, so if you change it, change will apply on next run
+   - you can use a different config file. order of reading of config files is following:
+     - ANSIBLE_CONFIG (environment variable if set)
+     - ansible.cfg (in the current directory)
+     - ~/.ansible.cfg (in the home directory)
+     - /etc/ansible/ansible.cfg
+ - templates:
+   - ansible module called templates
+   - definition pf parameters for running an ansible job
+   - useful to execute same job many times
+   - variables are used with templates to populate content
+ - handlers:
+   - used to handle error conditions
+   - called at the end of play
+   - you can have multiple tasks trigger another action
+ - roles:
+   - Roles can be thought as playbook that is split in multiple files
+   - one file for tasks, one for variables etc, one for handlers
+   - ansible galaxy is repository of roles people have created
+ - Ansible vault:
+   - secure store
+   - allows ansible to store secure encrypted data
+   - ansible-vault is CMD utility
+   - command line flag is --ask-vault-pass
+   
+## Ad Hoc commands
+# What are ad-hoc commands?
+ - used for quick tasks
+ - use ad-hoc command when you don't want to create playbook. 
+ - for simple tasks
+ - tasks don't require automation
+ - ansible command is used to run ad-hoc commands
+$ ansible others -b -a "/usr/sbin/reboot" # -b become root
+$ ansible all -m ping 
+$ ansible databases -b -m yum -a "name=elinks state=latest" # https://docs.ansible.com/ansible/latest/modules/yum_module.html#yum-module
+$ ansible databases -b  -m yum -a "name=elinks state=absent" # removes
+$ ansible-doc -l # list all modules
+$ ansible-doc yum # yum module doc
+ - Ad-hoc command output:
+   - green: success, no change
+   - yellow: success, change
+   - red: error
+ - compare ad-hoc to playbook:+
+$ ansible databases -m "ping"
+$ vim playbook0.yml
+    ---
+    - hosts: databases
+      tasks: 
+        - ping:
+$ ansible-playbook ping.yml
+ - execute ad-hoc commands against sample hosts
+$ vim myhosts
+    [hosts]
+    server2
+$ ansible hosts -i myhosts -m ping # -i specifies file
+$ ansible databases -m setup # will pull big json object for a given host. Including all details about host
+$ ansible hosts -i myhosts -m setup -a 'filter=ansible_default_ipv4' # pull IP info from defined hosts
+ - using variables with ad-hoc
+$ vim myhosts
+    [hosts]
+    server2 folder=/home/ansible # folder=/home/ansible is an env variable for server2
+$ ansible hosts -i myhosts -a "ls -l {{ folder }}" # variable is transferred in {{}}
+ - you can become other user from ansible
+$ sudo useradd tempuser # on server2 (databases group)
+$ ansible databases -b -a 'whoami' --become-user tempuser # tempuser
+ - compare with:
+$ ansible databases -b -a 'whoami # root
+$ ansible databases -a 'whoami' # ansible
+$ ansible databases -a 'whoami' --become-user tempuser # again, ansible. ansible can't become tempuser, root can. so -b is needed
+ - copy file to slaves
+$ touch testfile9 # on server1
+$ ansible databases -m copy -a "src=./testfile9 dest=./testfile9"
+$ ansible databases -a 'ls -l'
+
+# forking
+ - By default ansible configures 5 hosts at a time. we can change that when using ad-hoc command using -f option
+ - Forks: specify number of parallel processes to use (default=5)
+$ ansible all -a  "ls -la" -f 100 # command will be forked to 100 hosts
+
+## Static and dynamic inventories
+# Overview
+ - Inventories define hosts
+ - there are static and dynamic inventories
+ - example is ansible hosts
+ 
+ - static inventories:
+   - changed (edited) manually
+   - you can put connection information
+   - put variables
+   - defile shorcuts like: server_z ansible_port=5555 ansible_host=192.168.2.8
+   - connection type and user can be specified per host:
+      [targets]
+      other1.example.com ansble_connection=ssh ansible_user=user2
+   - supports patterns:
+      [server-groups]
+      server[1:3] # server1, server2, server3
+   - variables can be assigned to groups. Per documentation, this is not preferred method
+      [atlanta]
+      host1
+      host2
+      [atlanta:vars]
+      ntp_server=ntp.atlanta.example.com
+      proxy=proxy.atlanta.example.com
+   - 2 default groups: all, ungrouped. Ungrouped hosts are the ones that have no group.
+   - variables can be stored in individual files (.yml .yaml) relative to inventory file. for example inventory file:
+      [tbilisi]
+      mainhost
+      [webservers]
+      mainhost
+      - will be served by:
+      /etc/ansible/group_vars/tbilisi
+      /etc/ansible/group_vars/webservers
+      /etc/ansible/group_vars/mainhost
+      
+ - dynamic inventories:
+   - can be created and pulled from cloud services
+   - some cloud providers supported are EC2, Rackspace, openstack
+   - ansible tower provides DB to store inventory results (will be dicussed later)
+   - any type of inventory file can be accepted as inventory file
+     - ansible-playbook playbook.yml -i ./dynamic.py
+     - ansible all -i /etc/ansble/ec2.py -m ping
+   - ansible expect json output from executable file
+   - ansible will call --list before actually executing file and script should be able to respond to that
+   - then ansible will use --host for host information
+
+# Static inventories
+$ mkdir static-hosts-example # on server1
+$ cd static-hosts-example
+$ vim myhosts
+    server2
+$ vim test-playbook
+    ---
+    - hosts: all
+      tasks:
+        - ping:
+$ ansible-playbook test-playbook -i myhosts # server2 pinged
+$ vim myhosts 
+    [databases]
+    server2
+
+    [other]
+    server3
+    192.168.4.213 # server2
+$ ansible-playbook test-playbook -i myhosts # all servers pinged
+$ vim test-playbook
+    ---
+
+    - hosts: databases
+      tasks:
+        - ping:
+$ ansible-playbook test-playbook -i myhosts # database host (server2) pinged
+$ ansible -i myhosts databases -a 'ls -l /var/log/messages' # works wth ad-hoc as well
+$ vim myhosts       
+    [databases]
+    server2 ansible_user=giorgi
+
+    [other]
+    server3
+$ ansible -b -i myhosts databases -a 'whoami' # command will fail because key logon ssh is not configured for user giorgi. by default ansible logs on as ansible user, then changes user. 
+
+# variables in static inventories
+ - pass variable from inventory file
+$ vim myhosts 
+    [databases]
+    server2  # ansible_user=giorgi
+
+    [other]
+    server3
+    192.168.4.213 # server2
+
+    [other:vars]
+    log_folders=/opt/logs # this variable is passed to all servers in [other] group
+$ ansible -b -i myhosts other -m file -a "path={{ log_folders }} state=directory" # variable was passed to file module, 
+$ ansible-doc file 
+ - pass variable for host
+$ mkdir host_vars # creating variable dir and file
+$ cd host_vars/
+$ vim server3.yml
+    ---
+    log_folder: /opt/logs
+$ cd ..
+$ ansible -i myhosts server3 -a "echo  {{ log_folder }}" # will echo /opt/logs for server3 
+ - pass variable for group
+$ mkdir group_vars
+$ mkdir group_vars/databases
+$ vim group_vars/databases/log_settings.yml # as mentioned above, ansible will check inventory folder for group_vars
+    ---
+    log_folder: /opt/
+$ ansible -i myhosts databases -a 'ls -l {{ log_folder }}' 
+
+# Dynamic inventories
+ - returns json object that contains all data required for inventory file
+ - ansible checks the file to make sure it's executable
+ - as mentioned cloud providers give inventory file for infrastructure you have there
+ - dynamic library executable should respond to --list and --host options
+$ ansible dynamic-inventory.py --host # list specific host properties
+$ ansible dynamic-inventory.py --list # list hosts in dynamic inventory file
+$ ansible -i dynamic-inventory.py all -m ping 
+$ ansible -i dynamic-inventory.py all -a 'free -m'
+$ vim install_elink.yml                                           
+    ---
+    - hosts: all
+      user: ansible
+      sudo: yes  # deprecated, don't use
+      # become # use this instead
+      gather_facts: no
+      tasks:
+        - name: install elinks
+          action: yum name=elinks state=latest
+$ ansible-playbook -i dynamic-inventory.py install_elink.yml # when using sudo, need to make sure ansible user can run sudo commands without password
+$ ansible -i dynamic-inventory.py all -m shell -a "echo {{ logs_folder }}" # dynamic inventories can have vars too
+
+## Ansible playbooks
+# Overview
+ - playbook is one or more plays
+ - play describes steps in a process
+ - force specific end state for systems
+ - designed to be human readeable
+ - efficient for multiple tasks, compared to ad-hoc
+ - typically put under source controll
+ - YAML format
+ - first line starts with '---'
+ - playbook should be idempotent, able to run multiple times without breaking system.
+ - normally playbook starts with specifying hosts to act on. and user that runs tasks
+ - then you specify tasks
+ 
+# commonly used modules
+ - ansible ships with bunch of modules
+$ ansible-doc -l # to list all
+ - https://docs.ansible.com/ansible/latest/modules/modules_by_category.html
+ - manage user accounts: 
+   - user 
+   - https://docs.ansible.com/ansible/latest/modules/user_module.html
+ - add or remove group:
+   - group
+   - https://docs.ansible.com/ansible/latest/modules/group_module.html
+ -execute command on remote node:
+   - command
+   - https://docs.ansible.com/ansible/latest/modules/command_module.html
+ - copy files to remote hosts:
+   - copy
+ - downloads files from HTTP, HTTPS, or FTP to node:
+   - get_url
+   - https://docs.ansible.com/ansible/latest/modules/get_url_module.html
+ - manage user files for basic authentication:
+   - htpasswd 
+   - https://docs.ansible.com/ansible/latest/modules/htpasswd_module.html
+ - manage lines in text files:
+   - lineinfile
+   - add, replace text in files of remote host
+   - https://docs.ansible.com/ansible/latest/modules/lineinfile_module.html
+ - ping
+   - ping
+ - run local script to remote node:
+   - script
+   - script is local, you transfer it and then execute
+   - https://docs.ansible.com/ansible/latest/modules/script_module.html
+ - execute commands in nodes:
+   - shell
+   - https://docs.ansible.com/ansible/latest/modules/shell_module.html
+ - unpack an archive:
+   - unarchive 
+   - https://docs.ansible.com/ansible/latest/modules/unarchive_module.html
+ - yum-yum-yum:
+   - yum
+ - modules command and shell are different from other modules. they take a list of arguments, don't use key: value. to demonstrate:
+$ vim command-playbook.yml
+    ---
+    - hosts: all
+      become: yes
+      tasks:
+        - name: disable selinux
+          command: /sbin/setenforce 0
+$ ansible-playbook command-playbook.yml
+$ getenforce # permissive
+ - shell playbook:
+$ vim shell_playbook.yml              
+    ---
+    - hosts: all
+      tasks:
+       - name: data into file
+         shell: echo "testing" > testfile
+$ ansible-playbook shell_playbook.yml
+
+# Using modules
+ - lineinfile
+$ vim addline_infile.yml
+    ---
+    - hosts:
+      tasks:
+       - name: add hostname to config
+         lineinfile:
+           dest: /home/ansible/hostname.conf # file to work on 
+           regexp: ^Hostname=.* 
+           insertafter: ^# Hostname= # ^# Hostname= regexp works fine. god knows why ^# is used
+           line: Hostname={{ ansible_hostname } # ansible_hostname is ansible variable.
+$ vim hostname.conf # on server2
+    Hostname=
+$ ansible-playbook addline_infile.yml
+$ cat hostname.conf # Hostname=ansible2  
+ - this playbook will fail if file is not there. let's fix this
+$ rm hostname.conf # server2
+$ vim addline_infile.yml              
+    ---
+    - hosts: databases
+      tasks:
+       - name: create file if does not exist
+         file:
+           state: touch
+           path: /home/ansible/hostname.conf
+       - name: If line is not there, add it
+         lineinfile:
+           state: present
+           dest: /home/ansible/hostname.conf
+           line: Hostname={{ ansible_hostname }}
+$ ansible-playbook addline_infile.yml # will create hostname.conf andd insert line: Hostname=ansible2
+ - let's install apache and put file in document directory and start it:
+$ vim addline_infile.yml              
+    ---
+    - hosts: databases
+      become: yes
+      tasks:
+       - name: install apache
+         yum:
+           name: httpd
+           state: latest
+           state: latest
+       - name: create file if does not exist
+         file:
+           state: touch
+           path: /var/www/html/index.html
+       - name: If line is not there, add it
+         lineinfile:
+           state: present
+           dest: /var/www/html/index.html
+           line: Hostname={{ansible_hostname }} # our master node has this variable because ansible gathered facts. if used 'gather_facts: no', this yaml woud cause error.
+       - name: start apache
+         service:
+           name: httpd
+           state: reloaded
+           enabled: yes
+$ ansible-playbook addline_infile.yml
+
+# Register, Debug, STDERR, STDOUT
+ - register allows to store command execution output as a variable
+ - debug allows to print statements during execution. This includes 
+$ vim echo.yml
+    ---
+    - hosts: databases
+      tasks:
+       - name: print stdout
+         command: echo "hello world"
+         register: hello # register gets output and puts into a variable "hello"
+       - debug: msg="out={{ hello.stdout }}"
+       - debug: msg="err={{ hello.stderr }}"$ ansible-playbook echo.yml
+       - debug: # same as msg="" 
+           msg: "system {{ inventory_hostname }} has default gateway {{ ansible_default_ipv4.gateway }}"
+ - to see all data, packed into register variable, simply use msg={{hello}}
+$ ansible-playbook echo.yml # will print stdout and stderr (if present)
+
+# using conditionals in debug
+$ echo text > /etc/motd # on server2
+$ vim motd.yml              
+    ---
+    - hosts: others
+      tasks:
+        - shell: cat /etc/motd
+          register: motd_contents
+        - debug: msg="Message={{ motd_contents.stdout }}"
+        - debug: msg="MOTD is EMPTY"
+          when: motd_contents.stdout == ''
+$ ansible-playbook motd.yml # server 3 has empty motd, so motd will be printed for server2 and "MOTD is EMPTY" for server 3
+
+# copy a program and customize for target host
+$ sudo vim /opt/program1.sh
+    #!/bin/bash
+    HOSTNAME=
+
+    echo "Our Hostname is $HOSTNAME"
+$ sudo chmod 755 /opt/program1.sh
+$ vim mainapp1.yml 
+    ---
+    - hosts: databases
+      tasks:
+       - name: upload a file to the target
+         copy: 
+           src: /opt/program1.sh
+           dest: /home/ansible/program1.sh
+           mode: 0755 # remember to put 0 in front of standard permissions
+       - name: if line not there, add it
+         lineinfile:
+           state: present
+           dest: /home/ansible/program1.sh
+           regexp: '^HOSTNAME='
+           line: HOSTNAME={{ ansible_hostname }}
+       - name: Run the program
+         shell: /home/ansible/program1.sh
+         register: program1_out
+       - debug: msg="output={{program1_out}}"
+$ ansible-playbook mainapp1.yml
+
+# loops and conditionals
+ - ansible supports both
+ - when clause
+ - no need to use {{ }} insode conditionals
+ - we already used when in:
+   - debug: msg="MOTD is EMPTY"
+   when: motd_contents.stdout == ''
+ - let's make playbook, that gets facts and if node is redhat, it will install something
+$ sudo yum remove httpd # on server2,3
+$ vim install_it.yml
+    ---
+    - hosts: databases
+      become: yes
+      tasks:
+       - name: if OS is RHEL, install apache
+         yum:
+           name: httpd
+           state: latest
+         when: ansible_os_family == "Ubuntu" # will fail on centos. will work when changed to "RedHat"
+ - 'when' can look at local variable as well:
+$ vim create_file.yml 
+    ---
+    - hosts: databases
+      vars:
+        create_file: true
+      tasks:
+        - name: create file
+          file:
+           state: touch
+           path: /home/ansible/variable_was_true
+          when: not create_file # when: not <var> is same as if <var> false. 
+$ ansible-playbook create_file.yml # new file will not be created. "when: create_file" will create file.          
+# with_items loop
+$ vim with_items.yml
+    ---
+    - hosts: databases
+      tasks:
+      - name: with_items
+        debug:
+         msg: "{{ item }}"
+        with_items:
+         - 1 traki
+         - 2 traki
+ - with_items defines variables that are put into {{ item }}
+$ vim  newcreate.yml             
+    ---
+    - hosts: databases
+      tasks:
+       - name: multiple items
+         file:
+           state: touch
+           path: /home/ansible/{{ item }}
+         with_items:
+           - file_no_1
+           - file_no_2
+           - file_no_3
+$ ansible-playbook newcreate.yml # file_no_{1,2,3} will be created on server2
+
+# Looping over files
+$ vim first_file.txt # this is the first file
+$ vim second_file.txt # this is the second file
+$ vim file2.yml
+    ---
+    - hosts: databases # this does not matter, as we iterate over files in playbook's directory
+      tasks:
+       - debug:
+           msg: "{{ item }}"
+         with_file:
+           - first_file.txt
+           - second_file.txt
+$ ansible-playbook file2.yml
+
+# Error handling in playbooks
+$ vim test.sh
+    #!/bin/bash
+    echo " stdout "
+    touch /etc/testfile # will run this as ansible user, so line will raise error
+$ vim error_handling.yml # this playbook will fail intentionally, unless ignore_errors line is uncommented
+                         # because ansible user can't touch in /etc
+    ---
+    - hosts: databases
+      tasks:
+        - name: copy from server
+          copy: src=test.sh dest=/home/ansible/test.sh mode=0755
+        - name: Run the script
+          command: /home/ansible/test.sh
+          register: comm_out
+          ignore_errors: yes
+        - debug:
+              msg="out is {{comm_out.stdout}}"
+        - debug:
+            msg="err is {{comm_out.stderr}}"
+
+# Tagging tasks in playbooks            
+ - playbooks may have tags in them
+ - if playbook is large, it's useful to run it in protions
+ - both plays and tasks support tags
+ - you may choose to run only tagged portion or skip it 
+ - if multiple tasks have same tag, then they will all run
+$ vim tags.yml 
+    ---
+    - hosts: single
+      become: yes
+      tasks:
+       - name: install mysql server
+         yum: name=mysql-server
+         ignore_errors: yes
+         register: there
+         tags:
+           - packages
+       - name: start mysql
+         service: name=mysqld state=started
+         register: running
+         tags:
+           - startup
+$ ansible-playbook tags.yml --tags "startup" # run startup tag only
+$ ansible-playbook tags.yml --skip-tags "startup"
+
+# Template
+ - Putts a file out to a remote server.
+ - templates allow to create a file with vars that get replaced
+ - any of ansible variables can be used
+ - there is a template module
+ - jinja2 templating language is used
+ - jinja template is simply a text file
+ - template contains variables and/or expressions, which get replaced with values when template is rendered
+ - also tags, which control the logic of the template. all this inspired by python
+ - .j2 files
+$ vim sample.j2 # create jinja template
+    <p>
+    Hello there <p>
+    ServerName = {{ description }}
+$ vim sample_playbook.yml              
+    ---
+    - hosts: databases
+      become: yes
+      vars:
+        description: "{{ansible_hostname}}"
+      tasks:
+      - name: write the index file
+        template: src=sample_template.j2 dest=/var/www/html/index.html
+        notify: # Handlers will only be fired for tasks which report a changed state. So if nothing was changed, notify won't work
+                # basic event system that can be used to respond to change. 
+                # These ‘notify’ actions are triggered at the end of each block of tasks in a play, 
+                # and will only be triggered once even if notified by multiple different tasks.
+        - restart httpd
+      - name: ensure apache is running
+        service: name=httpd state=started
+      handlers: # Handlers are lists of tasks, not really any different from regular tasks, 
+                # that are referenced by a globally unique name, and are notified by notifiers. 
+                # If nothing notifies a handler, it will not run. Regardless of how many tasks notify a handler, 
+                # it will run only once, after all of the tasks complete in a particular play.
+        - name: restart httpd
+          service: name=httpd state=restarted
+
+## Ansible facts and variables
+# Ansible facts
+ - you get data from systems using facts
+ - data is pulled with ad-hoc command or using playbook
+ - facts can be used in playbook as variables
+ - you can disable fact collection to speed up execution. but this data is usually 20-30kb, so unless infrastructure is large, it does not matter
+   - gather_facts: no 
+$ ansible single -m setup | less # to see all facts
+$ ansible hosts -i myhosts -m setup -a 'filter=ansible_default_ipv4' # specify variable name after filter=
+ - we can actually create facts:
+$ ansible local -m setup -a "filter=ansible_local" # no fact named ansible_local
+$ su - 
+$ cd /etc/ansible/
+$ mkdir facts.d
+$ cd facts.d/
+$ vim preference.fact # extention has to be .fact
+    [general]
+    private_fact=bugs
+    other_fact=bunny
+$ ansible local -m setup -a "filter=ansible_local" # now it will return ansible_local
+$ vim localfacts.yml # this playbook will print local facts that we created above
+    ---
+    - hosts: local
+      tasks:
+        - debug: msg="{{ansible_local.preference}}"
+
+# Using facts
+$ vim date-time.yml              
+    ---
+    - hosts: single
+      tasks:
+        - debug:
+            msg: "the server date is: {{ansible_date_time.date}} Time {{ansible_date_time. hour}}:{{ ansible_date_time.minute }}"
+$ ansible-playbook date-time.yml 
+- another example:
+$ cat date_template.j2
+    local time when this was run is: {{date_time}}
+$ vim put_date_time.yml              
+    ---
+    - hosts: single
+      vars:
+        date_time: "{{ ansible_date_time.date }}{{ ansible_date_time.hour}}:{{ ansible_date_time.minute }}"
+      tasks:
+      - name: write date and time on server's file
+        template: src=date_template.j2 dest=/home/ansible/date-time.txt
+$ ansible-playbook put_date_time.yml # this will put file on server 3. file content: local time when this was run is: 2018-07-11 14:35
+$ vim server_ip.yml              
+    ---
+    - hosts: centos
+      tasks:
+        - debug:
+            msg: "Server {{ ansible_hostname }} IP address is: {{ ansible_default_ipv4.address }} "
+$ ansible-playbook server_ip.yml # "msg": "Server ansible1 IP address is: 192.168.4.216 "
+
+## Roles
+# Overview
+ - https://docs.ansible.com/ansible/2.5/user_guide/playbooks_reuse_roles.html
+ - Roles can be thought as a playbook split into multiple files
+ - one for tasks, one for vars etc.
+ - So they package up various components of a playbook and put together. Individual roles are reusable
+ - roles keyword tells playbook to look for roles in directories that folows keyword
+ - Ansible galaxy is like docker hub, it has community defined roles
+$ cd roles
+$ mkdir tasks; cd tasks
+$ vim main.yml
+    ---
+
+    - shell: cat /etc/motd
+      register: motd_contents
+    - debug: msg="Message={{ motd_contents.stdout }}"
+    - debug: msg="MOTD is EMPTY"
+      when: motd_contents.stdout == ''
+$ cd ..
+$ vim playbook.yml
+    --- 
+    - hosts: single
+      tasks: 
+      - include: tasks/main.yml 
+$ ansible-playbook playbook.yml 
+ - roles are similar to include, but more structured
+ - Roles expect files to be in certain directory names. 
+ - Roles must include at least one of these directories, 
+ - however it is perfectly fine to exclude any which are not being used. 
+ - When in use, each directory must contain a main.yml file, which contains the relevant content
+
+# Roles to create Apache
+$ cd roles
+$ tree 
+.
+├── apache-webserver
+│   ├── defaults
+│   ├── files
+│   ├── handlers
+│   ├── meta
+│   ├── tasks
+│   ├── templates
+│   └── vars
+$ vim apache-webserver/tasks/main.yml # has to be named main.yml
+    - name: install apache
+      yum: pkg=httpd state=latest
+      notify: Restart HTTPD # handler for this notify will be in handlers dir 
+                            # Handlers will only be fired for tasks which report a changed state. So if nothing was changed, notify won't work
+
+$ vim apache-webserver/handlers/main.yml
+    - name: Restart HTTPD
+      service: name=httpd state=restarted
+$ vim apache-webserver/vars/main.yml # not using that, just for demonstration
+    website_name: This is our website
+$ vim webserver.yml
+    --- # master playbook to install apache
+    - hosts: single
+      become: yes
+      roles:
+        - apache-webserver # indicates that roles are in directory apache-webserver
+$ tree 
+.
+├── apache-webserver
+│   ├── defaults
+│   ├── files
+│   ├── handlers
+│   │   └── main.yml
+│   ├── meta
+│   ├── tasks
+│   │   └── mail.yml
+│   ├── templates
+│   └── vars
+│       └── main.yml
+***
+└── webserver.yml
+$ ansible-playbook webserver.yml
+
+# Use previous role and new one
+$ cd roles
+$ mkdir customize-apache
+$ mkdir customize-apache/tasks
+$ vim customize-apache/tasks/main.yml # will create index.html and put hostname in it
+    - name: create file if it does not exist
+      file: state=touch path=/var/www/html/index.html
+
+    - name: if hostname not in the file, add to it
+      lineinfile:
+        state: present
+        dest: /var/www/html/index.html
+        line: Hostname={{ ansible_hostname }}
+$ cat update_apache.yml # this book point to old and new roles. It will install apache, restart it, put index.html in document root and insert text in it.
+    --- # put hostname in index.html
+    - hosts: single
+      become: yes
+      roles:
+       - apache-webserver
+       - customize-apache
+
+# Build on previous roles, install php
+$ mkdir -p install_php/tasks
+$ vim install_php/tasks/main.yml
+    - name: install php on server
+      yum: name={{item}} state=latest
+      with_items:
+       - php
+       - php-gd
+       - php-pear
+       - php-mysql
+$ cat install_php.yml
+    ---
+
+    - hosts: single
+      become: yes
+      roles:
+       - apache-webserver
+       - install_php
+       - customize-apache
+$ ansible-playbook install_php.yml # will do all thing above, also install php packages
+
+## Download and use roles from ansible galaxy
+# Ansible galaxy
+ - it's a repo, that's it
+ - it has roles
+ - ansible-galaxy command is used to pull roles from there
+ - they are downloaded in path set in config file
+ - path can be changed with -p
+ - roles can have dependencies. it they have, they will be installed too 
+ - https://galaxy.ansible.com/
+ - look up roles there, most come with command to get role:
+ - by default roles will be downloaded to /etc/ansible/roles, so need to give permission to ansible user, or run ansible-galaxy as root
+$ ansible-galaxy install geerlingguy.nginx 
+ - https://galaxy.ansible.com/geerlingguy/nginx
+$ mkdir galaxy
+$ cd galaxy
+$ ansible-galaxy init testproject # init creates a new project and builts directory structure for it
+$ tree .
+.
+└── testproject
+    ├── defaults
+    │   └── main.yml
+    ├── files
+    ├── handlers
+    │   └── main.yml
+    ├── meta
+    │   └── main.yml
+    ├── README.md
+    ├── tasks
+    │   └── main.yml
+    ├── templates
+    ├── tests
+    │   ├── inventory
+    │   └── test.yml
+    └── vars
+        └── main.yml
+$ cat testproject/tasks/main.yml # main.yml files were created too 
+    ---
+    # tasks file for testproject
+$ ansible-galaxy install geerlingguy.apache -p geerlingguy_apache # will create directory as specified in -p option. will put all yml files in respective structure
+                                                                  # check README.md as well
+$ ansible-galaxy install geerlingguy.apache # installs same in /etc/ansble/roles
+$ cat  lamp.yml # this book will run roles that we installed.          
+    ---
+    - hosts: single
+      become: yes
+      roles:
+        - geerlingguy_apache/geerlingguy.apache # if roles directory was default, we would not have to specify directory, 
+                                                # ansible would look up in /etc/ansble/roles by default
+$ ansible-playbook lamp.yml # apache is now installed on server3. 
+
+# Multiple roles with galaxy
+$ ansible-galaxy install  geerlingguy.mysql -p geerlingguy_mysql
+$ cat lamp.yml
+    ---
+    - hosts: single
+      become: yes
+      roles:
+        - geerlingguy_apache/geerlingguy.apache
+        - geerlingguy_mysql/geerlingguy.mysql
+$ ansible-playbook lamp.yml # installs aache and mysql
+
+## Managing Parallelism
+# What is parallelism?
+ - You can run multiple connections at the same time
+ - by default 5
+ - you may want more 
+$ ansible centos -m ping -f 10 # fork to more servers
+$ ansible-playbook forktest.yml -f 10 # same option used with playbooks
+
+# Parallelism inside playbook
+ - serial keyword does that
+ - serial accepts values in numbers:
+   - serial: 2
+ - and %, meaning operation will be done on x% of hosts:
+   - serial: '30%'
+ - batch sizes:
+   - serial:
+     - 1
+     - 3
+     - 2
+$ cat par.yml # Installs on 2 server batches
+    ---
+    - hosts: centos
+      become: yes
+      serial: 2
+      tasks: 
+      - name: install elinks
+        yum: name=elinks state=latest
+$ cat par.yml
+    ---
+    - hosts: centos
+      become: yes
+      serial: # does operation in batches of hosts
+       - 1 
+       - 3
+       - 2
+      tasks: 
+      - name: install elinks
+        yum: name=elinks state=latest
+$ cat par.yml # 
+    ---
+    - hosts: centos
+      become: yes
+      serial: # does operation in batches of hosts
+       - 1 
+       - 3
+       - "20%" specify batches and percentage in same file
+      tasks: 
+      - name: install elinks
+        yum: name=elinks state=latest
+ - you can specify rate of failures in a file:
+$ cat par.yml 
+    ---
+    - hosts: centos
+      become: yes
+      max_fail_percentage: 30
+      serial: 10
+      tasks: 
+      - name: install elinks
+        yum: name=elinks state=latest
+
+## Using ansible vault to secure data
+# Ansible vault for encryption
+ - Ansible vault is a secure store
+ - keeps sensitive data
+   - passwords
+   - encrypted files
+ - tool used is ansible-vault
+ - command line flag is  --ask-vault-pass or --vault-password-file
+$ mkdir vault
+$ cd vault/
+$ mkdir roles  
+$ cd roles/
+$ ansible-galaxy init ./test.demo
+$ tree test.demo/
+$ test.demo/
+    ├── defaults
+    │   └── main.yml
+    ├── files
+    ├── handlers
+    │   └── main.yml
+    ├── meta
+    │   └── main.yml
+    ├── README.md
+    ├── tasks
+    │   └── main.yml
+    ├── templates
+    ├── tests
+    │   ├── inventory
+    │   └── test.yml
+    └── vars
+        └── main.yml
+$ cat test.demo/tasks/main.yml
+    ---
+    - copy: content="{{special_password}}" dest=/home/ansible/encrypted_output
+$ cat test.demo/vars/main.yml 
+    ---
+    special_password: bugsbunny
+$ cat playbook_plain.yml # this book created file 'encrypted_output' on server3, containing 'bugsbunny'
+    ---
+    - hosts: single
+      roles:
+        - roles/test.demo
+$ ansible-vault encrypt roles/test.demo/vars/main.yml # pass:password encrypts variable file that contained password
+$ ansible-playbook playbook_plain.yml # now execution fails
+$ ansible-playbook playbook_plain.yml --ask-vault-pass # now it runs
+
+# Options usable with ansible-vault
+ - We can edit encrypted file:
+$ ansible-vault edit roles/test.demo/vars/main.yml
+ - change key, used for encryption:
+$ ansible-vault rekey roles/test.demo/vars/main.yml 
+ - to view file, without editing:
+$ ansible-vault view  roles/test.demo/vars/main.yml 
+ - to decrypt file:
+$ ansible-vault decrypt roles/test.demo/vars/main.yml 
+$ ansible-vault encrypt roles/test.demo/vars/main.yml # encypting file again
+ - ansible vault supports password file for automated environments
+$ vim password 
+    password
+$ ansible-playbook playbook_plain.yml --vault-password-file=password # works yay
+$ vim roles/test.demo/tasks/main.yml 
+    ---
+    - copy: content="{{special_password}}" dest=/home/ansible/encrypted_output
+    - shell: echo "{{special_password}}" > testfile
+$ ansible-playbook playbook_plain.yml --ask-vault-pass -v # verbose option will pring secret information, so be aware of that
+$ cat roles/test.demo/tasks/main.yml 
+    ---
+    - copy: content="{{special_password}}" dest=/home/ansible/encrypted_output
+    - shell: echo "{{special_password}}" > testfile
+      no_log: true # this will prevent secrets from being printed
+$ ansible-playbook playbook_plain.yml --ask-vault-pass -v # password not printed any more
+
+## Ansible tower
+# Installing ansible tower trial
+https://www.ansible.com/products/tower
+ - Register, downloaded
+ - edit inventory file
+cd /home/giorgi/ansible-tower-setup-3.2.5
+$ vim inventory # edit passwords as required by README.md
+    admin_password='towerpass'
+    pg_password='pgpass'
+    rabbitmq_password='rabbitpass'
+$ ./setup.sh # will install locally
+ - https://192.168.4.209/#/login # tower can be reached from web
+ - user:pass=admin:towerpass
+ - generate license, upload license
+ - that's it buddeh.
+
+# Log into tower and run sample task
+ - https://192.168.4.209/
+ - settings
+ - https://192.168.4.209/#/setup
+ - About Tower to see version
+ - ORGANIZATIONS to see users, jobs etc.
+ - https://192.168.4.209/#/setup > USERS > +ADD | Cheidewy:password
+ - log in as new user
+ - SETTINGS > CREDENTIALS > CREATE CREDENTIAL
+ - {"NAME": "Ansible Credential", "CREDENTIAL TYPE": "Machine", "USERNAME": "ansible", "PASSWORD": "ansible", "SSH PRIVATE KEY": "/home/ansible/.ssh/id_rsa"}
+ - get back to tower home
+ - log off and log back on as admin
+ - go to projects, download demo project
+ - go to templates, run demo template. It executes, so ansible tower is running properly
+
+# Adding to inventory and executing tasks
+ - log in as admin
+ - go to inventories: INVENTORIES > +ADD
+ - add Inventory, withing inventory add groups and hosts. 
+ - think of inventory as the file, groups [centos], hosts server1,2 etc.
+ - go to hosts tab, mark hosts to run commands on. click run command
+ - choose ping in modules, select "ansible credentials" in credentials.
+ - should work. 
+
